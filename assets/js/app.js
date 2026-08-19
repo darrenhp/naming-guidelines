@@ -895,6 +895,22 @@
   /* ---------------------- 侧边导航 ---------------------- */
   function buildNav() {
     var html = "";
+    // 总览分组：顶层入口（与顶部 banner 对齐）
+    html += '<div class="nav-group"><div class="nav-title">总览</div>';
+    var overview = [
+      { href: "#/home", label: "首页" },
+      { href: "#/multi-lang", label: "多语言范例" },
+      { href: "#/cheatsheet", label: "速查表" },
+      { href: "#/cases", label: "对比案例库" },
+      { href: "#/references", label: "参考资料" },
+      { href: "#/toolbox", label: "AI 提示词工具箱" },
+      { href: "#/onboarding", label: "新人培训路径" },
+    ];
+    overview.forEach(function (o) {
+      html += navLink(o.href, o.label);
+    });
+    html += "</div>";
+    // 三大分类：章节叶子
     DATA.categories.forEach(function (cat) {
       html += '<div class="nav-group"><div class="nav-title">' +
         esc(cat.icon) + " " + esc(cat.title) + "</div>";

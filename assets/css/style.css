@@ -30,6 +30,7 @@
   --radius-sm: 6px;
   --maxw: 1100px;
   --topbar-h: 56px;
+  --banner-h: 48px;
   --sidebar-w: 268px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
@@ -241,10 +242,10 @@ mark {
 }
 .sidebar {
   position: sticky;
-  top: var(--topbar-h);
+  top: calc(var(--topbar-h) + var(--banner-h));
   width: var(--sidebar-w);
   flex: 0 0 var(--sidebar-w);
-  height: calc(100vh - var(--topbar-h));
+  height: calc(100vh - var(--topbar-h) - var(--banner-h));
   overflow-y: auto;
   background: var(--bg-elev);
   border-right: 1px solid var(--border);
@@ -261,6 +262,49 @@ mark {
 }
 .sidebar-overlay {
   display: none;
+}
+
+/* ---------- 5.1 顶部大纲目录（banner） ---------- */
+.outline-banner {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 30;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+}
+.outline-inner {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  overflow-x: auto;
+  padding: 8px 16px;
+}
+.outline-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.outline-cat {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.outline-link {
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.outline-link:hover,
+.outline-link.active {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent);
+  text-decoration: none;
 }
 
 /* ---------- 6. 侧边导航 ---------- */
@@ -423,7 +467,7 @@ mark {
   border-radius: 20px;
 }
 .content-section {
-  scroll-margin-top: 70px;
+  scroll-margin-top: 112px;
   border-top: 1px solid var(--border);
   padding-top: 18px;
   margin-top: 18px;
@@ -607,12 +651,13 @@ table.cmp code {
 }
 @media print {
   .topbar,
+  .outline-banner,
   .sidebar,
   .site-footer,
   .print-btn,
   .search-wrap,
   .icon-btn {
-    display: none !important;
+    display:  none !important;
   }
   .layout {
     display: block;

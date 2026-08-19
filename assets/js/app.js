@@ -798,23 +798,42 @@
 
     DATA.categories.forEach(function (cat) {
       html += '<div class="nav-group"><div class="nav-title">' +
-        esc(cat.icon) + " " + esc(cat.title) +
-        '</div><a class="nav-link" href="#/' +
-        esc(cat.id) +
-        '"><span class="nav-num">▸</span>' +
-        esc("总览") +
-        "</a>";
-      html += '<div class="nav-sub">';
-      cat.sections.forEach(function (sec, i) {
-        html += navLink(
-          "#/" + esc(cat.id) + "/" + esc(sec.id),
-          sec.title,
-          String(i + 1)
-        );
-      });
-      html += "</div></div>";
+        esc(cat.icon) + " " + esc(cat.title) + "</div>";
+      html += navLink("#/" + esc(cat.id), "全部章节");
+      html += "</div>";
     });
     nav.innerHTML = html;
+  }
+
+  /* ---------------------- 顶部大纲目录（banner） ---------------------- */
+  function buildOutline() {
+    var box = document.getElementById("outline-inner");
+    if (!box) return;
+    var html = "";
+    DATA.categories.forEach(function (cat) {
+      html += '<div class="outline-group">';
+      html += '<span class="outline-cat">' + esc(cat.icon) + " " + esc(cat.title) + "</span>";
+      cat.sections.forEach(function (sec) {
+        html +=
+          '<a class="outline-link" href="#/' +
+          esc(cat.id) +
+          "/" +
+          esc(sec.id) +
+          '">' +
+          esc(sec.title) +
+          "</a>";
+      });
+      html += "</div>";
+    });
+    box.innerHTML = html;
+  }
+  function updateOutlineActive() {
+    var current = location.hash || "#/home";
+    if (current === "") current = "#/nohome";
+    var links = document.querySelectorAll(".outline-link");
+    links.forEach(function (a) {
+      a.classList.toggle("active", a.getAttribute("href") === current);
+    });
   }
 
   function navLink(href, label, num) {
@@ -838,6 +857,7 @@
       var active = href === current || current.indexOf(href + "/") === 0;
       a.classList.toggle("active", active);
     });
+    updateOutlineActive();
   }
 
   /* ---------------------- 深色模式 ---------------------- */
@@ -952,6 +972,7 @@
       return;
     }
     buildNav();
+    buildOutline();
     bindTopbar();
     bindDelegated();
     window.addEventListener("hashchange", router);

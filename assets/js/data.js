@@ -1507,4 +1507,271 @@ window.SITE_DATA = {
       ],
     },
   },
+
+  /* =======================================================================
+   * 设计原则章节（第十五~十七章）：全链路操作 / 解耦正交 / cats-effect 生态
+   * 引用《The Pragmatic Programmer》正交性、《代码大全》第5~6章、cats-effect 社区惯例，
+   * 均转述并标注章节，禁止逐字摘抄。
+   * ===================================================================== */
+  designPrinciples: {
+    chapters: [
+      {
+        id: "15",
+        title: "十五、全链路操作设计参考",
+        icon: "🔁",
+        intro:
+          "命名规范解决「叫什么」，这一章解决「该怎么设计」。对每种常见操作，从 Endpoint → Service → Storage 讲清楚职责划分、常见坑以及对应的命名落点，把前面的命名规则套用到真实设计决策里。",
+        sections: [
+          {
+            num: "15.1",
+            title: "创建 Create",
+            principle:
+              "创建接口用 POST /resources，建议支持幂等键防重复提交；Service 编排校验与副作用；Storage 插入并返回完整实体。",
+            why:
+              "「创建」最容易被设计成可重复点击两次产生两条记录的脆弱接口。把幂等责任（Idempotency-Key）、业务规则校验（唯一性/配额）、副作用编排（写库 + RPC + 发事件）清晰分层，分别落到 Endpoint / Service / Storage，是后续所有写操作的基础范式。参考《代码大全》第 5 章「设计中的层次」关于职责划分的论述。",
+            table: {
+              columns: ["层", "设计要点", "命名落点", "常见坑"],
+              rows: [
+                ["Endpoint", "POST /resources；建议支持 Idempotency-Key 请求头防重复提交", "方法名 createXxx；成功返回 201 Created + Location 响应头", "把创建接口设计成可被重复点击两次却产生两条记录"],
+                ["Service", "校验业务规则（唯一性、配额），组装领域对象，编排副作用（写库 + RPC + 发事件）", "CreateXxxRequest → XxxResponse；如需要发领域事件命名为 XxxCreatedEvent", "把参数校验和业务规则校验混在一起，导致 Service 方法过长、职责不清晰"],
+                ["Storage", "插入并返回生成的主键；唯一性约束建议数据库层也加一道（不要只信任应用层校验）", "save / insert，返回值命名为新建实体本身而非裸 ID", "只在应用层查重（先 SELECT 再 INSERT），并发场景下产生竞态条件，生成重复记录"],
+                ["响应设计", "返回创建后的完整资源表示，而不是仅返回一个 ID", "—", "只返回 {\"id\": 123}，前端还要再发一次 GET 才能拿到完整数据，增加一次不必要的往返"],
+              ],
+            },
+            refs: ["参考：《代码大全》第 5 章「设计中的层次」"],
+          },
+          {
+            num: "15.2",
+            title: "检索 / 过滤 Retrieve & Filter",
+            principle:
+              "单条查询与列表查询语义不同，命名和返回类型都要体现差异：按 ID 查用 findXxxById（返回 Option），列表搜索用 searchXxx / listXxx（返回分页集合）。",
+            why:
+              "「按主键查一条」和「按条件搜一批」在领域语义上完全不同：前者查无结果是「合法的缺失」，后者空列表是「正常结果」。把两者用不同方法名与返回类型区分，调用方就不会把「没查到」误当成「出错了」。过滤条件超过 2~3 个时应聚合为 XxxSearchCriteria / XxxFilter 对象，避免长参数列表反模式（呼应第一章）。",
+            table: {
+              columns: ["场景", "命名", "返回类型", "找不到时的行为"],
+              rows: [
+                ["按主键单条查询", "findXxxById / getXxxById", "Optional<Xxx> / Option[Xxx] / Xxx | None", "不是错误，是「合法的缺失」，交由调用方决定是否升级为错误（见十七章）"],
+                ["条件过滤 / 搜索列表", "searchXxx / listXxx", "分页集合（Page<Xxx> 或自定义 {items, page, pageSize, totalCount}）", "空列表是正常结果，不应抛异常，也不应返回 404"],
+              ],
+            },
+            notes: [
+              "过滤参数对象化：条件超过 2~3 个时聚合为 XxxSearchCriteria / XxxFilter，例如 UserSearchCriteria{emailContains, status, createdAfter, pageRequest}。",
+              "分页参数全站二选一并写入规范：page + pageSize（页码分页，适合管理后台跳页）或 cursor + limit（游标分页，适合大数据量频繁变化的列表，避免深分页性能问题）。",
+              "过滤 vs 搜索的接口：简单精确匹配用 Query 参数（?status=active）；复杂全文检索建议单独开语义清晰的端点或用 POST /resources/search（请求体传复杂查询 DSL），避免把过长过滤条件塞进 URL。",
+            ],
+            code: [
+              "public class UserSearchCriteria {",
+              "    private String emailContains;",
+              "    private UserStatus status;",
+              "    private Instant createdAfter;",
+              "    private PageRequest pageRequest; // page, pageSize, sortBy, order",
+              "}",
+            ],
+            refs: ["参考：《代码大全》第 11 章「变量名的力量」（长参数列表反模式）", "参考：JSON:API 规范（include / 过滤参数）"],
+          },
+          {
+            num: "15.3",
+            title: "修改 Update（全量 vs 局部）",
+            principle:
+              "全量替换用 PUT /resources/{id} + updateXxx（幂等）；局部更新用 PATCH /resources/{id} + patchXxx / partialUpdateXxx（只提交变化字段）。",
+            why:
+              "PUT 要求提交完整资源表示，未提交的字段应视为置空，语义幂等；PATCH 只提交变化字段，减少误覆盖风险，适合移动端精细化更新。局部更新的 DTO 每个字段必须能区分「未传」与「传了 null」（Java/Scala 用 Optional/Option，Python 用 Unset 哨兵或 exclude_unset），否则无法表达「不想改这个字段」。在不可变数据风格（Scala case class）中，「更新」本质是「基于旧值构造新值」，命名上体现「生成新版本」而非「原地修改」。",
+            table: {
+              columns: ["方式", "HTTP 方法", "语义", "命名落点", "适用场景"],
+              rows: [
+                ["全量替换", "PUT /resources/{id}", "幂等，必须提交完整资源表示，未提交字段视为置空", "updateXxx(id, XxxRequest)", "客户端总是拿到完整对象后再整体提交（如表单编辑页）"],
+                ["局部更新", "PATCH /resources/{id}", "只提交变化的字段", "patchXxx(id, XxxPatchRequest) 或 partialUpdateXxx", "移动端 / 精细化字段更新，减少误覆盖风险"],
+              ],
+            },
+            notes: [
+              "局部更新 DTO：每个字段用 Optional<T> / Option[T]（Java/Scala）或显式区分「未传」与「传了 null」（Python 可用 Unset 哨兵或 exclude_unset），否则无法区分「用户没传这个字段」和「用户想把它清空」。",
+              "函数式建模下的更新：不可变数据中「更新」=「基于旧值构造新值」，命名体现「生成新版本」：val updatedUser = existingUser.copy(email = newEmail, updatedAt = Instant.now())。",
+              "并发控制：需要乐观锁时实体加 version 字段（或 updatedAt 做 ETag），接口层通过 If-Match 传入版本号，冲突返回 409 Conflict，方法可命名为 updateXxxIfVersionMatches 或在 Service 内部统一处理，不必把「乐观锁」写进每个方法名（避免过度暴露实现细节）。",
+            ],
+            refs: ["参考：《代码大全》第 11 章（命名应表达意图，而非实现细节）"],
+          },
+          {
+            num: "15.4",
+            title: "删除 Delete（软删 / 硬删）",
+            principle:
+              "默认用软删除（deleteXxx，内部标记 deleted_at）；真正不可逆的清除用 purgeXxx / hardDeleteXxx，命名必须明确区别于普通删除。",
+            why:
+              "绝大多数业务资源应默认软删，保留可恢复性与审计能力，对外语义仍是「删除」。硬删除（真正执行 DELETE FROM）只在合规要求（如 GDPR 数据擦除）或后台清理中使用，且需要单独权限控制，命名上必须用 purge / hardDelete 明确提示「不可逆」。幂等性上，DELETE 已删除的资源再次调用建议仍返回 204 而非 404，具体选择写进规范并全站统一。",
+            table: {
+              columns: ["类型", "命名", "数据库表现", "使用建议"],
+              rows: [
+                ["软删除（默认推荐）", "deleteXxx（对外语义「删除」，内部实现是标记）", "deleted_at 置为当前时间，默认查询自动过滤 deleted_at IS NULL", "绝大多数业务资源应默认软删，保留可恢复性和审计能力"],
+                ["硬删除", "purgeXxx / hardDeleteXxx（命名必须明确区别于普通删除，提示「不可逆」）", "真正执行 DELETE FROM", "只在合规要求（如 GDPR 数据擦除）或后台清理任务中使用，且需要单独的权限控制"],
+              ],
+            },
+            notes: [
+              "幂等性：DELETE /resources/{id} 对已被删除的资源再次调用，建议仍返回 204 No Content（幂等语义），而非 404；具体选择需写进团队规范并全站统一。",
+              "级联删除的命名与设计：涉及关联资源级联删除时，在 Service 层显式编排（如 deleteUserAndCascadeOrders），不要仅依赖数据库外键 ON DELETE CASCADE 静默处理业务上重要的级联关系——至少保证这个决策在代码里「看得见」。",
+            ],
+            refs: ["参考：GDPR 数据擦除要求（硬删除的使用边界）"],
+          },
+          {
+            num: "15.5",
+            title: "关联关系查询 Relational Query",
+            principle:
+              "用批量预加载（findAllWithOrders）替代 N+1 循环查询；用组合 DTO 暴露所需字段；用 JSON:API 的 include 参数让客户端按需展开关联，避免「膨胀版」接口组合爆炸。",
+            why:
+              "N+1 查询（先查列表再循环查关联）是典型的性能反模式，应在 Repository 层提供批量 JOIN / 批量 IN 的预加载方法，并用命名区分「带关联数据」与「轻量版」（findAllWithOrders vs findAll），让调用方明确知道自己拿到的是什么。响应体应显式定义组合 DTO（只暴露需要的字段），不要直接序列化 ORM 实体（含懒加载代理）。为每种关联组合单独开接口会导致组合爆炸，宜用 include 参数由客户端声明需要展开的关联。",
+            table: {
+              columns: ["设计问题", "反模式", "推荐做法", "命名落点"],
+              rows: [
+                ["N+1 查询", "先查用户列表，再对每个用户循环查订单", "Repository 层提供批量预加载方法，一次性 JOIN 或批量 IN 查询", "findAllWithOrders（预加载版）区别于 findAll（精简版），让调用方明确知道自己拿到的是「带关联数据」还是「轻量版」"],
+                ["响应体结构", "直接把 ORM 实体（含所有关联对象的懒加载代理）序列化返回", "显式定义组合 DTO，只暴露需要的字段", "UserWithOrdersResponse { user: UserResponse, orders: List<OrderSummary> }"],
+                ["客户端按需展开关联数据", "每个关联关系都单独开一个「膨胀版」接口（getUserWithOrders、getUserWithOrdersAndPayments……组合爆炸）", "参考 JSON:API 的 include 查询参数惯例：GET /users/1?include=orders,payments，由客户端声明需要展开哪些关联", "Service / Repository 层对应提供可组合的加载方法，而非为每种组合单独写一个方法"],
+              ],
+            },
+            refs: ["参考：JSON:API 规范（include 参数惯例）"],
+          },
+        ],
+      },
+      {
+        id: "16",
+        title: "十六、解耦与正交设计原则",
+        icon: "🧩",
+        intro:
+          "命名让单个符号「说人话」，这一章讲模块与模块之间「互不拖累」——参考《The Pragmatic Programmer》关于「正交性」的论述，以及《代码大全》第 5~6 章关于设计与类的构建思想，转述为可直接落地的分层实践。",
+        sections: [
+          {
+            num: "16.1",
+            title: "分层单向依赖",
+            principle:
+              "依赖方向必须单向：Endpoint → Service → Repository/Client；Service 依赖 Repository 的接口/trait 而非具体实现类（依赖倒置）。",
+            why:
+              "强制单向依赖避免循环引用与「改一处牵全身」。Service 只依赖 Repository 的接口（依赖倒置，Dependency Inversion），具体实现通过依赖注入在启动时装配。直接收益：单元测试可用 Mock/Stub 替换 Repository，不需要真实数据库。",
+            refs: ["参考：《The Pragmatic Programmer》——「Orthogonality」", "参考：《代码大全》第 5~6 章（设计与类的构建）"],
+          },
+          {
+            num: "16.2",
+            title: "正交性：模块之间互不知晓内部细节",
+            principle:
+              "判断标准：修改模块 A 的内部实现，是否需要连带修改模块 B？如果需要，说明两者不正交，存在不必要的耦合。",
+            why:
+              "正交的系统里，每个模块只对自己的职责负责，改动被限制在局部。耦合的征兆是「一个改动要同步改多处」。把 SQL 细节、存储技术、实现类、跨职责逻辑从上层剥离，让每一层只看见「下一层的契约」而非「下一层的实现细节」，是降低耦合的核心手段。",
+            table: {
+              columns: ["反例（耦合）", "正例（正交）", "说明"],
+              rows: [
+                ["UserService 里直接拼 SQL 字符串操作数据库", "UserService 只依赖 UserRepository 接口，SQL 细节完全封装在实现类内部", "Service 换用哪种存储技术（MySQL/Mongo/内存）不应影响业务逻辑代码"],
+                ["UserController 直接依赖具体的 MySqlUserRepositoryImpl", "UserController 只依赖 UserService 接口，UserService 只依赖 UserRepository 接口", "每一层只知道「下一层的契约」，不知道「下一层的实现细节」"],
+                ["一个函数既做参数校验，又做业务计算，还顺带写日志和发消息", "拆成职责单一的小函数：validate / calculate / persist / notify，由上层编排调用顺序", "每个小函数可以独立测试、独立复用、独立替换"],
+              ],
+            },
+            refs: ["参考：《The Pragmatic Programmer》——「Orthogonality」"],
+          },
+          {
+            num: "16.3",
+            title: "端口与适配器（Ports & Adapters / 六边形架构）",
+            principle:
+              "领域核心（Domain / Service 业务逻辑）不应 import 任何框架相关类；HTTP Controller、Repository 实现、RPC Client 都是实现「端口」的「适配器」。",
+            why:
+              "当业务逻辑不依赖任何框架（Spring 的 @Component、数据库驱动、HTTP 客户端库），就可以脱离框架单独跑单元测试；替换 Web 框架或数据库时，领域层代码零改动。Controller / Repository / RPC Client 实现由领域层定义的接口（端口），是「插头与插座」的关系。",
+            refs: ["参考：Alistair Cockburn 六边形架构（Ports & Adapters）"],
+          },
+          {
+            num: "16.4",
+            title: "Command / Query 分离（轻量级 CQRS）",
+            principle:
+              "即使不引入完整 CQRS 基础设施，也建议区分「读路径」与「写路径」：写用输入型 DTO，读用输出型 DTO，两者不必字段一一对应。",
+            why:
+              "写路径（Command）的 DTO 重点是校验完整性与业务规则（CreateXxxRequest）；读路径（Query）的 DTO 可按展示需要裁剪字段（XxxResponse / XxxSummary）。常见误区是「一个模型走天下」：同一个类既当数据库实体、又当请求体、又当响应体，导致任何一处改动互相牵连——这正是「不正交」的典型表现。",
+            refs: ["参考：轻量级 CQRS（读写模型分离）"],
+          },
+          {
+            num: "16.5",
+            title: "可组合性：小函数优于大函数",
+            principle:
+              "优先编写无副作用、输入输出明确的小函数，通过组合构建复杂行为，而非写一个「做了十件事」的大函数。",
+            why:
+              "在 OOP 中体现为职责单一的方法 + 组合调用；在 FP（如 Scala + cats-effect）中体现为通过 for-comprehension / flatMap 链式组合多个小的 F[_] 计算（见十七章）。小函数的收益是可独立测试、复用、替换，且命名能精确表达单一意图。",
+            refs: ["参考：《代码大全》第 6 章（子程序构建）"],
+          },
+        ],
+      },
+      {
+        id: "17",
+        title: "十七、cats-effect 生态专属设计规范",
+        icon: "🐱",
+        intro:
+          "这一章面向使用 Scala + cats-effect（IO、Tagless Final 风格）的团队，重点回答一个高频困惑：错误到底该用 sealed trait 的 Error ADT 表示，还是用 Option 表示？以及这套生态里其他值得沉淀成规范的命名/设计惯例。",
+        sections: [
+          {
+            num: "17.1",
+            title: "Option vs Error ADT：判断标准",
+            principle:
+              "Option 表示「缺失是一种合法、预期内的状态」；Error ADT（通常配合 Either/EitherT）表示「需要调用方特殊处理、带有语义信息的失败」。",
+            decisionTree: true,
+            why:
+              "一句话记忆：Option 回答「有没有」，Error ADT 回答「为什么不行、该怎么办」。当「没有」这件事本身需要被调用方特殊处理并展示明确原因时，就该从 Option 提升为 Error ADT。下方交互式决策树可帮你逐步判断。",
+            table: {
+              columns: ["场景", "用 Option 还是 Error ADT", "理由", "示例签名"],
+              rows: [
+                ["Repository 按主键查询，可能查无此记录", "Option", "查一条不存在的记录本身不是「失败」，是数据库的正常回答", "def findById(id: UserId): F[Option[User]]"],
+                ["Service 层某个动作要求用户必须存在（否则无法继续）", "把 Option 提升为 Error ADT", "在此业务语境下，「用户不存在」变成需被调用方感知并处理（如返回 404）的失败分支", "EitherT.fromOptionF(repo.findById(id), UserError.UserNotFound)"],
+                ["邮箱已被占用、参数格式非法、余额不足等业务规则校验失败", "Error ADT", "这些失败有明确语义，调用方（如 Controller）需据此映射不同 HTTP 状态码", "sealed trait UserError；case class EmailAlreadyExists(email: String) extends UserError"],
+                ["领域模型里某个字段本身就是可选的（如用户中间名）", "Option", "这是数据建模层面的「可能没有这个值」，与错误处理无关", "case class User(id: UserId, email: String, middleName: Option[String])"],
+                ["外部 RPC 调用超时 / 网络失败", "Error ADT（通常还需区分「可重试」与「不可重试」）", "需携带足够信息供上层决定重试策略、告警级别", "sealed trait PointsServiceError；case class Timeout(afterMs: Long) extends PointsServiceError"],
+                ["多个字段同时校验，需一次性收集所有错误而非查到第一个就短路", "Error ADT + ValidatedNel（而非 Either）", "Either/EitherT 是短路语义；ValidatedNel 是累积语义，适合表单类校验", "def validate(req: CreateUserRequest): ValidatedNel[ValidationError, CreateUserRequest]"],
+              ],
+            },
+            refs: ["参考：cats-effect 官方文档（Error 建模）", "参考：《Scala with Cats》Error handling 章节"],
+          },
+          {
+            num: "17.2",
+            title: "错误 ADT 的命名与组织规范",
+            principle:
+              "顶层设计 sealed trait XxxError，按领域（而非按层）划分；子类型用名词短语描述失败原因，父 trait 已带 Error 后缀故子类型不必重复。",
+            why:
+              "错误 ADT 应按领域划分（UserError、OrderError），而不是笼统一个全局 AppError（除非项目很小）。具体错误用 case class（需要携带上下文，如 email: String）或 case object（无附加信息，如 UserNotFound）。命名用名词短语描述失败原因，不要在子类型上重复 Error 后缀（父 trait 已叫 UserError，子类型直接叫 EmailAlreadyExists）。Controller 层用一个集中的 xxxErrorMapper 把 Error ADT 映射为 HTTP 状态码，避免每个 Controller 方法散落 match 语句。",
+            code: [
+              "sealed trait UserError extends Product with Serializable",
+              "",
+              "object UserError {",
+              "  final case class EmailAlreadyExists(email: String) extends UserError",
+              "  final case class InvalidEmailFormat(email: String) extends UserError",
+              "  case object UserNotFound extends UserError",
+              "}",
+            ],
+            refs: ["参考：cats-effect 社区惯例（Error ADT 组织）"],
+          },
+          {
+            num: "17.3",
+            title: "Tagless Final 与算法 / 解释器命名",
+            principle:
+              "Trait（「算法」algebra）用领域名词命名（UserService[F[_]]）；具体解释器命名三选一（UserServiceImpl / DefaultUserService / LiveUserService）并全站统一。",
+            why:
+              "定义 algebra 时用领域名词（UserService[F[_]]），方法签名返回 F[Either[UserError, UserResponse]] 等。解释器（interpreter/实现）命名社区常见几种流派：UserServiceImpl、DefaultUserService、LiveUserService（ZIO 生态更常见，cats-effect 项目也不少见）——团队需三选一并写入规范，不要在同一项目混用多种风格。类型参数统一用 F[_]，约束（typeclass constraint）就近声明在需要的地方（如 def createUser[F[_]: Sync] 或 class DefaultUserService[F[_]: Async]）。",
+            code: [
+              "trait UserService[F[_]] {",
+              "  def createUser(request: CreateUserRequest): F[Either[UserError, UserResponse]]",
+              "  def findUserById(id: UserId): F[Option[UserResponse]]",
+              "}",
+            ],
+            refs: ["参考：Tagless Final 模式（algebra / interpreter 命名）"],
+          },
+          {
+            num: "17.4",
+            title: "资源管理与并发状态命名",
+            principle:
+              "需获取/释放的资源用 Resource[F, A] 建模，命名 xxxResource；并发可变状态用 Ref[F, State]，变量名带 Ref 后缀提示并发安全。",
+            why:
+              "数据库连接池、HTTP 客户端等需要获取/释放的资源用 Resource[F, A] 建模（def dbResource: Resource[F, Transactor[F]]）。并发可变状态用 Ref[F, State]，变量名体现「这是被并发安全管理的状态」，如 Ref[F, Map[UserId, Int]] 命名为 userPointsCacheRef——Ref 后缀提示这不是普通字段，操作需走 .get / .update API。",
+            refs: ["参考：cats-effect Resource / Ref 文档"],
+          },
+          {
+            num: "17.5",
+            title: "与其他章节的呼应",
+            principle:
+              "本章的 Option / Error 判断标准与 15.2「按 ID 查询可能查无，属合法缺失」完全一致；建议在这两处内容之间加交叉链接。",
+            why:
+              "UserError / Option 的判断标准，与〈十五 · 15.2 检索/过滤〉「按 ID 查询可能查无此记录，属于合法缺失」的结论完全一致——这不是 Scala 特有的规则，只是 cats-effect 生态提供了更精确的类型工具（Option vs Either）在类型层面强制表达出来。与〈十四 · 14.3 Scala 范例〉的 UserRepository.findByEmail 返回类型也呼应，网站应在这些位置加交叉链接，减少读者来回跳转。",
+            refs: ["呼应：〈十五 · 15.2 检索/过滤〉", "呼应：〈十四 · 14.3 Scala 范例〉"],
+          },
+        ],
+      },
+    ],
+  },
 };

@@ -969,3 +969,139 @@ table.cmp code {
     font-size: 0.85rem;
   }
 }
+
+/* ---------- 首页：角色卡片 / 最近更新 / 搜索提示 ---------- */
+.home-search-hint {
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 18px auto 4px;
+  max-width: 760px;
+}
+.role-card .role-links {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  font-size: 0.82rem;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-weak);
+}
+.recent {
+  display: grid;
+  gap: 10px;
+}
+.recent-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--bg-elev);
+}
+.recent-item:hover {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+.recent-item strong {
+  color: var(--accent);
+}
+.recent-item span {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ---------- 设计原则章节：notes 列表 ---------- */
+.notes {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+.notes li {
+  margin: 4px 0;
+  color: var(--text);
+}
+
+/* ---------- 决策树（17.1 Option vs Error） ---------- */
+.decision-tree {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elev);
+}
+.dt-title {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+.dt-node {
+  margin-bottom: 12px;
+}
+.dt-q {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+.dt-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.dt-btn {
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+}
+.dt-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.dt-result {
+  margin-top: 8px;
+}
+.dt-card {
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--accent-weak);
+}
+.dt-card h5 {
+  margin: 0 0 6px;
+  color: var(--accent);
+}
+.dt-card p {
+  margin: 0 0 10px;
+}
+.dt-reset {
+  margin-top: 4px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+/* ---------- 侧栏分类 / 章标题 ---------- */
+.nav-cat {
+  font-weight: 600;
+}

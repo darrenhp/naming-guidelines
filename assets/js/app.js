@@ -193,6 +193,31 @@
         snippet: DATA.multiLang.intro,
       });
     }
+
+    // 设计原则章节（十五~十七章）纳入搜索
+    if (DATA.designPrinciples) {
+      DATA.designPrinciples.chapters.forEach(function (ch) {
+        ch.sections.forEach(function (sec) {
+          var sp = [sec.num, sec.title, sec.principle, sec.why || ""];
+          if (sec.table) {
+            sp.push(sec.table.columns.join(" "));
+            sec.table.rows.forEach(function (r) {
+              sp.push(r.join(" "));
+            });
+          }
+          if (sec.code) sp.push(sec.code.join(" "));
+          if (sec.notes) sp.push(sec.notes.join(" "));
+          searchIndex.push({
+            catId: "design-" + ch.id,
+            catTitle: ch.title,
+            secId: sec.num,
+            secTitle: sec.num + " " + sec.title,
+            text: sp.join(" ").toLowerCase(),
+            snippet: sec.principle,
+          });
+        });
+      });
+    }
   })();
 
   function runSearch(query) {
@@ -363,6 +388,127 @@
     closeSidebar();
   }
 
+  /* ---------------------- 渲染：设计原则章节（十五~十七章） ---------------------- */
+  function renderDesign(chapterId) {
+    var chapter = null;
+    DATA.designPrinciples.chapters.forEach(function (c) {
+      if (c.id === chapterId) chapter = c;
+    });
+    if (!chapter) {
+      app.innerHTML = notFound("未找到设计原则章节：" + esc(chapterId || ""));
+      afterRender();
+      closeSidebar();
+      return;
+    }
+    var html =
+      '<div class="page-head"><h1>' +
+      esc(chapter.icon) + " " + esc(chapter.title) +
+      '</h1><p class="muted">' + esc(chapter.intro) + "</p></div>";
+    chapter.sections.forEach(function (sec) {
+      html += '<section class="content-section" id="sec-' + esc(sec.num) + '">';
+      html +=
+        '<h2 class="section-title">' +
+        esc(sec.num) + " " + esc(sec.title) + "</h2>";
+      html += '<div class="principle">' + esc(sec.principle) + "</div>";
+      if (sec.why) {
+        html +=
+          '<details class="why"><summary>为什么（点开看原理与出处）</summary><p>' +
+          esc(sec.why) + "</p></details>";
+      }
+      if (sec.table) html += renderPlainTable(sec.table);
+      if (sec.code && sec.code.length) {
+        html += renderExamples([{ code: sec.code.join("\n"), caption: "" }]);
+      }
+      if (sec.notes && sec.notes.length) {
+        html += '<ul class="notes">';
+        sec.notes.forEach(function (n) {
+          html += "<li>" + esc(n) + "</li>";
+        });
+        html += "</ul>";
+      }
+      if (sec.decisionTree) html += renderDecisionTree();
+      if (sec.refs) html += renderRefs(sec.refs);
+      html += "</section>";
+    });
+    app.innerHTML = html;
+    if (chapterId === "17") bindDecisionTree();
+    afterRender();
+    closeSidebar();
+  }
+
+  /* 17.1 Option vs Error ADT 交互决策树（静态结构，交互由 bindDecisionTree 绑定） */
+  function renderDecisionTree() {
+    return (
+      '<div class="decision-tree" id="dt-option-error">' +
+      '<h4 class="dt-title">🤔 交互决策树：这个字段 / 失败该用 Option 还是 Error ADT？</h4>' +
+      '<div class="dt-node" id="dt-q1">' +
+      '<p class="dt-q">这个「缺失 / 失败」情况，调用方<strong>需不需要特殊处理</strong>（展示原因、映射错误码、决定重试）？</p>' +
+      '<div class="dt-opts">' +
+      '<button class="dt-btn" data-branch="opt">不需要，只是数据上「可能没有」</button>' +
+      '<button class="dt-btn" data-branch="err">需要（是「失败」，要带语义）</button>' +
+      "</div></div>" +
+      '<div class="dt-node" id="dt-q2" style="display:none">' +
+      '<p class="dt-q">需要一次性<strong>收集所有错误</strong>（而非查到第一个就停）吗？</p>' +
+      '<div class="dt-opts">' +
+      '<button class="dt-btn" data-branch="validated">是（表单类多字段校验）</button>' +
+      '<button class="dt-btn" data-branch="either">否（遇第一个错误即可短路）</button>' +
+      "</div></div>" +
+      '<div class="dt-result" id="dt-result"></div>' +
+      "</div>"
+    );
+  }
+
+  function bindDecisionTree() {
+    var root = document.getElementById("dt-option-error");
+    if (!root) return;
+    var q2 = document.getElementById("dt-q2");
+    var result = document.getElementById("dt-result");
+    root.querySelectorAll(".dt-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var branch = btn.getAttribute("data-branch");
+        if (branch === "opt") {
+          showResult(
+            "✅ 用 <strong>Option</strong>",
+            "这只是数据建模层面的「可能没有」（如用户中间名、查无记录属合法缺失），与错误处理无关。",
+            "def findById(id: UserId): F[Option[User]]"
+          );
+        } else if (branch === "err") {
+          q2.style.display = "block";
+          q2.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } else if (branch === "validated") {
+          showResult(
+            "✅ 用 <strong>Error ADT + ValidatedNel</strong>",
+            "Either / EitherT 是短路语义（遇第一个错误就停）；ValidatedNel 是累积语义，适合表单类多字段校验，一次性收集全部错误。",
+            "def validate(req: CreateUserRequest): ValidatedNel[ValidationError, CreateUserRequest]"
+          );
+        } else if (branch === "either") {
+          showResult(
+            "✅ 用 <strong>Error ADT + Either / EitherT</strong>",
+            "失败有明确语义，调用方（如 Controller）据此映射不同 HTTP 状态码；短路语义即可。",
+            "sealed trait UserError; case class EmailAlreadyExists(email: String) extends UserError"
+          );
+        }
+      });
+    });
+    function showResult(title, desc, code) {
+      result.innerHTML =
+        '<div class="dt-card"><h5>' +
+        title +
+        "</h5><p>" +
+        desc +
+        '</p><div class="code-block"><pre><code>' +
+        esc(code) +
+        '</code></pre></div><button class="dt-reset" id="dt-reset">↺ 重新选择</button></div>';
+      result.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      var reset = document.getElementById("dt-reset");
+      if (reset)
+        reset.addEventListener("click", function () {
+          q2.style.display = "none";
+          result.innerHTML = "";
+        });
+    }
+  }
+
   function renderRefs(refs) {
     if (!refs || !refs.length) return "";
     return (
@@ -467,6 +613,45 @@
       esc(s.intro) +
       "</p></section>";
 
+    html +=
+      '<p class="home-search-hint">🔎 全站搜索：使用顶部搜索框输入关键词（如「布尔命名」「REST URL」「Option」），可直达对应章节。</p>';
+
+    html += '<h2 class="section-title">按你的角色直达</h2><div class="grid grid-2">';
+    var roles = [
+      { icon: "🎓", title: "我是新人", desc: "第一次来，1 小时速成命名规范与评审眼光。",
+        links: [{ href: "#/onboarding", label: "新人培训路径" }, { href: "#/cheatsheet", label: "速查表" }, { href: "#/code", label: "代码命名" }] },
+      { icon: "🔍", title: "我在做 Code Review", desc: "临时查一条反例规则，或让 AI 帮我把关。",
+        links: [{ href: "#/cases", label: "反例案例库" }, { href: "#/toolbox", label: "AI 提示词工具箱" }, { href: "#/code", label: "命名规则" }] },
+      { icon: "🛠️", title: "我在设计新接口 / 新表", desc: "需要命名 + 全链路操作的落地参考。",
+        links: [{ href: "#/api", label: "API 命名" }, { href: "#/db", label: "数据库命名" }, { href: "#/design/15", label: "全链路操作设计" }] },
+      { icon: "🏛️", title: "我在做技术方案 / 架构评审", desc: "关注解耦、正交与设计原则。",
+        links: [{ href: "#/design/16", label: "解耦与正交" }, { href: "#/design/17", label: "cats-effect 规范" }, { href: "#/multi-lang", label: "多语言范例" }] },
+    ];
+    roles.forEach(function (r) {
+      html +=
+        '<div class="card role-card"><div class="cat-icon">' + esc(r.icon) + "</div><h3>" +
+        esc(r.title) + "</h3><p>" + esc(r.desc) + '</p><div class="role-links">';
+      r.links.forEach(function (l) {
+        html += '<a class="chip" href="' + l.href + '">' + esc(l.label) + "</a>";
+      });
+      html += "</div></div>";
+    });
+    html += "</div>";
+
+    html += '<h2 class="section-title">最近更新</h2><div class="recent">';
+    var recent = [
+      { href: "#/design/15", title: "十五、全链路操作设计参考", note: "Create / 检索过滤 / 修改 / 删除 / 关联查询的命名落点" },
+      { href: "#/design/16", title: "十六、解耦与正交设计原则", note: "分层单向依赖 / 正交性 / 端口适配器 / 轻量 CQRS" },
+      { href: "#/design/17", title: "十七、cats-effect 生态规范", note: "Option vs Error ADT（含交互决策树）/ Tagless Final / 资源管理" },
+      { href: "#/multi-lang", title: "多语言分层服务命名范例", note: "Java / Scala / Python 同名原则不同表达" },
+    ];
+    recent.forEach(function (rc) {
+      html +=
+        '<a class="recent-item" href="' + rc.href + '"><strong>' + esc(rc.title) +
+        "</strong><span>" + esc(rc.note) + "</span></a>";
+    });
+    html += "</div>";
+
     html += '<h2 class="section-title">三大分类</h2><div class="grid grid-3">';
     DATA.categories.forEach(function (cat) {
       html +=
@@ -478,30 +663,6 @@
         esc(cat.title) +
         "</h3><p>" +
         esc(cat.summary) +
-        "</p></a>";
-    });
-    html += "</div>";
-
-    html += '<h2 class="section-title">工具与路径</h2><div class="grid grid-3">';
-    var tools = [
-      { href: "#/multi-lang", icon: "🌐", title: "多语言分层范例", desc: "Java/Scala/Python 同名原则不同表达" },
-      { href: "#/cases", icon: "🧪", title: "对比案例库", desc: "按类别筛选 + 搜索全部 ❌/✅ 对比" },
-      { href: "#/cheatsheet", icon: "📄", title: "速查表", desc: "一页纸规范，可打印 / 另存 PDF" },
-      { href: "#/toolbox", icon: "🤖", title: "AI 提示词工具箱", desc: "起名 / 规则文件 / 一次 Review，一键复制" },
-      { href: "#/references", icon: "📚", title: "参考资料", desc: "Google / Microsoft / Airbnb 等一手链接" },
-      { href: "#/onboarding", icon: "🎓", title: "新人培训路径", desc: "1 小时速成 + 交互自测" },
-      { href: "#/code", icon: "💡", title: "从代码命名开始", desc: "10 节，含反例正例对比" },
-    ];
-    tools.forEach(function (t) {
-      html +=
-        '<a class="card cat-card" href="' +
-        esc(t.href) +
-        '"><div class="cat-icon">' +
-        esc(t.icon) +
-        "</div><h3>" +
-        esc(t.title) +
-        "</h3><p>" +
-        esc(t.desc) +
         "</p></a>";
     });
     html += "</div>";
@@ -836,6 +997,9 @@
     } else if (page === "multi-lang") {
       renderMultiLang();
       return;
+    } else if (page === "design") {
+      renderDesign(sub);
+      return;
     } else {
       html = notFound("未找到页面：" + esc(page));
     }
@@ -895,58 +1059,102 @@
   /* ---------------------- 侧边导航 ---------------------- */
   function buildNav() {
     var html = "";
-    // 总览分组：顶层入口（与顶部 banner 对齐）
-    html += '<div class="nav-group"><div class="nav-title">总览</div>';
-    var overview = [
-      { href: "#/home", label: "首页" },
-      { href: "#/multi-lang", label: "多语言范例" },
-      { href: "#/cheatsheet", label: "速查表" },
-      { href: "#/cases", label: "对比案例库" },
-      { href: "#/references", label: "参考资料" },
-      { href: "#/toolbox", label: "AI 提示词工具箱" },
-      { href: "#/onboarding", label: "新人培训路径" },
+    // 按第十八章 IA：6 组（快速开始 / 命名规范 / 架构与设计原则 / 多语言范例 / 案例与工具 / 参考资料）
+    var groups = [
+      {
+        title: "🚀 快速开始",
+        links: [
+          { href: "#/home", label: "首页" },
+          { href: "#/onboarding", label: "新人培训路径" },
+          { href: "#/cheatsheet", label: "速查表" },
+        ],
+      },
+      { title: "📛 命名规范", cats: DATA.categories },
+      {
+        title: "🏗️ 架构与设计原则",
+        links: [
+          { href: "#/design/15", label: "十五、全链路操作设计" },
+          { href: "#/design/16", label: "十六、解耦与正交设计" },
+          { href: "#/design/17", label: "十七、cats-effect 规范" },
+        ],
+      },
+      {
+        title: "🌐 多语言范例",
+        links: [{ href: "#/multi-lang", label: "多语言分层范例" }],
+      },
+      {
+        title: "🧰 案例与工具",
+        links: [
+          { href: "#/cases", label: "对比案例库" },
+          { href: "#/toolbox", label: "AI 提示词工具箱" },
+        ],
+      },
+      {
+        title: "📚 参考资料",
+        links: [{ href: "#/references", label: "参考资料" }],
+      },
     ];
-    overview.forEach(function (o) {
-      html += navLink(o.href, o.label);
-    });
-    html += "</div>";
-    // 三大分类：章节叶子
-    DATA.categories.forEach(function (cat) {
-      html += '<div class="nav-group"><div class="nav-title">' +
-        esc(cat.icon) + " " + esc(cat.title) + "</div>";
-      html += '<div class="nav-sub">';
-      cat.sections.forEach(function (sec, i) {
-        html += navLink(
-          "#/" + esc(cat.id) + "/" + esc(sec.id),
-          sec.title,
-          String(i + 1)
-        );
-      });
-      html += "</div></div>";
+    groups.forEach(function (g) {
+      html += '<div class="nav-group"><div class="nav-title">' + esc(g.title) + "</div>";
+      if (g.links) {
+        g.links.forEach(function (l) {
+          html += navLink(l.href, l.label);
+        });
+      }
+      if (g.cats) {
+        g.cats.forEach(function (cat) {
+          html += '<a class="nav-link nav-cat" href="#/' + esc(cat.id) + '">' +
+            esc(cat.icon) + " " + esc(cat.title) + "</a>";
+          html += '<div class="nav-sub">';
+          cat.sections.forEach(function (sec, i) {
+            html += navLink(
+              "#/" + esc(cat.id) + "/" + esc(sec.id),
+              sec.title,
+              String(i + 1)
+            );
+          });
+          html += "</div>";
+        });
+      }
+      html += "</div>";
     });
     nav.innerHTML = html;
   }
 
-  /* ---------------------- 顶部 banner：顶层入口（越顶层导航） ---------------------- */
+  /* ---------------------- 顶部 banner：按使用意图分组的顶层入口 ---------------------- */
   function buildOutline() {
     var box = document.getElementById("outline-inner");
     if (!box) return;
-    var html = "";
-    var overview = [
-      { href: "#/home", label: "首页" },
-      { href: "#/multi-lang", label: "多语言范例" },
-      { href: "#/cheatsheet", label: "速查表" },
-      { href: "#/cases", label: "对比案例库" },
-      { href: "#/references", label: "参考资料" },
-      { href: "#/toolbox", label: "AI 提示词工具箱" },
-      { href: "#/onboarding", label: "新人培训路径" },
+    var groups = [
+      { title: "快速开始", links: [
+        { href: "#/home", label: "首页" },
+        { href: "#/onboarding", label: "新人路径" },
+        { href: "#/cheatsheet", label: "速查表" },
+      ]},
+      { title: "命名规范", links: [
+        { href: "#/code", label: "代码" },
+        { href: "#/api", label: "API" },
+        { href: "#/db", label: "数据库" },
+      ]},
+      { title: "架构与设计", links: [
+        { href: "#/design/15", label: "全链路操作" },
+        { href: "#/design/16", label: "解耦正交" },
+        { href: "#/design/17", label: "cats-effect" },
+      ]},
+      { title: "多语言范例", links: [{ href: "#/multi-lang", label: "Java/Scala/Python" }] },
+      { title: "案例与工具", links: [
+        { href: "#/cases", label: "案例库" },
+        { href: "#/toolbox", label: "AI 工具箱" },
+      ]},
+      { title: "参考资料", links: [{ href: "#/references", label: "参考链接" }] },
     ];
-    overview.forEach(function (o) {
-      html += '<a class="outline-link" href="' + o.href + '">' + esc(o.label) + "</a>";
-    });
-    DATA.categories.forEach(function (cat) {
-      html += '<a class="outline-link outline-cat-link" href="#/' +
-        esc(cat.id) + '">' + esc(cat.icon) + " " + esc(cat.title) + "</a>";
+    var html = "";
+    groups.forEach(function (g) {
+      html += '<div class="outline-group"><span class="outline-cat">' + esc(g.title) + "</span>";
+      g.links.forEach(function (l) {
+        html += '<a class="outline-link" href="' + l.href + '">' + esc(l.label) + "</a>";
+      });
+      html += "</div>";
     });
     box.innerHTML = html;
   }

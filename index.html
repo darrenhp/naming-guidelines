@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>命名与设计规范指导网站</title>
+  <meta name="description" content="面向工程师的代码命名 / REST API 命名 / 数据库命名规范速查与深入理解站点" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主内容</a>
+
+  <header class="topbar">
+    <button id="hamburger" class="icon-btn hamburger" aria-label="打开导航" aria-expanded="false">☰</button>
+    <a class="brand" href="#/home">命名规范指南</a>
+
+    <div class="search-wrap">
+      <input
+        id="search-input"
+        class="search-input"
+        type="search"
+        placeholder="搜索：布尔命名、REST URL、表名单复数…"
+        autocomplete="off"
+        aria-label="全站搜索"
+      />
+      <div id="search-results" class="search-results" hidden></div>
+    </div>
+
+    <button id="theme-toggle" class="icon-btn theme-toggle" aria-label="切换深色/浅色主题">🌓</button>
+  </header>
+
+  <div class="layout">
+    <aside id="sidebar" class="sidebar" aria-label="侧边导航">
+      <nav id="nav" class="nav"></nav>
+    </aside>
+    <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
+
+    <main id="main" class="main" tabindex="-1">
+      <div id="app" class="app"></div>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <p>命名与设计规范指导网站 · 内容以业界共识与团队约定为基准 · 本站倡导的命名风格亦以身作则</p>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>

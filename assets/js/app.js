@@ -782,7 +782,27 @@
   /* ---------------------- 侧边导航 ---------------------- */
   function buildNav() {
     var html = "";
-    html += '<div class="nav-group"><div class="nav-title">总览</div>';
+    DATA.categories.forEach(function (cat) {
+      html += '<div class="nav-group"><div class="nav-title">' +
+        esc(cat.icon) + " " + esc(cat.title) + "</div>";
+      html += '<div class="nav-sub">';
+      cat.sections.forEach(function (sec, i) {
+        html += navLink(
+          "#/" + esc(cat.id) + "/" + esc(sec.id),
+          sec.title,
+          String(i + 1)
+        );
+      });
+      html += "</div></div>";
+    });
+    nav.innerHTML = html;
+  }
+
+  /* ---------------------- 顶部 banner：顶层入口（越顶层导航） ---------------------- */
+  function buildOutline() {
+    var box = document.getElementById("outline-inner");
+    if (!box) return;
+    var html = "";
     var overview = [
       { href: "#/home", label: "首页" },
       { href: "#/cheatsheet", label: "速查表" },
@@ -792,47 +812,22 @@
       { href: "#/onboarding", label: "新人培训路径" },
     ];
     overview.forEach(function (o) {
-      html += navLink(o.href, o.label);
+      html += '<a class="outline-link" href="' + o.href + '">' + esc(o.label) + "</a>";
     });
-    html += "</div>";
-
     DATA.categories.forEach(function (cat) {
-      html += '<div class="nav-group"><div class="nav-title">' +
-        esc(cat.icon) + " " + esc(cat.title) + "</div>";
-      html += navLink("#/" + esc(cat.id), "全部章节");
-      html += "</div>";
-    });
-    nav.innerHTML = html;
-  }
-
-  /* ---------------------- 顶部大纲目录（banner） ---------------------- */
-  function buildOutline() {
-    var box = document.getElementById("outline-inner");
-    if (!box) return;
-    var html = "";
-    DATA.categories.forEach(function (cat) {
-      html += '<div class="outline-group">';
-      html += '<span class="outline-cat">' + esc(cat.icon) + " " + esc(cat.title) + "</span>";
-      cat.sections.forEach(function (sec) {
-        html +=
-          '<a class="outline-link" href="#/' +
-          esc(cat.id) +
-          "/" +
-          esc(sec.id) +
-          '">' +
-          esc(sec.title) +
-          "</a>";
-      });
-      html += "</div>";
+      html += '<a class="outline-link outline-cat-link" href="#/' +
+        esc(cat.id) + '">' + esc(cat.icon) + " " + esc(cat.title) + "</a>";
     });
     box.innerHTML = html;
   }
   function updateOutlineActive() {
     var current = location.hash || "#/home";
-    if (current === "") current = "#/nohome";
+    if (current === "") current = "#/home";
     var links = document.querySelectorAll(".outline-link");
     links.forEach(function (a) {
-      a.classList.toggle("active", a.getAttribute("href") === current);
+      var href = a.getAttribute("href");
+      var active = href === current || current.indexOf(href + "/") === 0;
+      a.classList.toggle("active", active);
     });
   }
 

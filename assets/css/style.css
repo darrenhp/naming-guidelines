@@ -260,9 +260,52 @@ mark {
   max-width: var(--maxw);
   margin: 0 auto;
 }
-.sidebar-overlay {
+  .sidebar-overlay {
   display: none;
 }
+
+/* ---------- 多语言范例 Tab 切换 ---------- */
+.lang-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 16px;
+}
+.lang-tab {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.15s ease;
+}
+.lang-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.lang-tab.active {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-weight: 600;
+}
+.lang-panel {
+  display: none;
+}
+.lang-panel.active {
+  display: block;
+}
+.lang-panel h3 {
+  margin-top: 6px;
+}
+.sub-title {
+  margin: 16px 0 8px;
+  color: var(--text);
+  font-size: 1rem;
+}
+
 
 /* ---------- 5.1 顶部大纲目录（banner） ---------- */
 .outline-banner {

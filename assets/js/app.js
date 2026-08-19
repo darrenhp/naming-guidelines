@@ -167,6 +167,32 @@
         });
       });
     });
+
+    // 多语言范例页纳入搜索
+    if (DATA.multiLang) {
+      var mlParts = [DATA.multiLang.intro];
+      mlParts.push(DATA.multiLang.layersTable.columns.join(" "));
+      DATA.multiLang.layersTable.rows.forEach(function (r) {
+        mlParts.push(r.join(" "));
+      });
+      DATA.multiLang.languages.forEach(function (l) {
+        mlParts.push(l.heading, l.structure, l.code.join(" "));
+        l.table.rows.forEach(function (r) {
+          mlParts.push(r.join(" "));
+        });
+      });
+      DATA.multiLang.comparisonTable.rows.forEach(function (r) {
+        mlParts.push(r.join(" "));
+      });
+      searchIndex.push({
+        catId: "multi-lang",
+        catTitle: "多语言范例",
+        secId: "",
+        secTitle: "多语言分层服务命名范例",
+        text: mlParts.join(" ").toLowerCase(),
+        snippet: DATA.multiLang.intro,
+      });
+    }
   })();
 
   function runSearch(query) {
@@ -252,6 +278,89 @@
         );
       })
       .join("");
+  }
+
+  // 通用多列表格（列名动态，不做 ❌/✅ 着色），用于多语言范例页
+  function renderPlainTable(t) {
+    var html = '<div class="table-scroll"><table class="cmp"><thead><tr>';
+    t.columns.forEach(function (c) {
+      html += "<th>" + esc(c) + "</th>";
+    });
+    html += "</tr></thead><tbody>";
+    t.rows.forEach(function (r) {
+      html += "<tr>";
+      for (var i = 0; i < t.columns.length; i++) {
+        html += "<td>" + esc(r[i] == null ? "" : r[i]) + "</td>";
+      }
+      html += "</tr>";
+    });
+    html += "</tbody></table></div>";
+    return html;
+  }
+
+  /* ---------------------- 渲染：多语言分层服务范例 ---------------------- */
+  function renderMultiLang() {
+    var ml = DATA.multiLang;
+    var html =
+      '<div class="page-head"><h1>🌐 多语言分层服务命名范例</h1>' +
+      '<p class="muted">' + esc(ml.intro) + "</p></div>";
+
+    html += '<h2 class="section-title">14.1 统一分层结构与职责</h2>';
+    html += renderPlainTable(ml.layersTable);
+
+    html += '<h2 class="section-title">14.2–14.4 三语言范例（Tab 切换）</h2>';
+    html += '<div class="lang-tabs" id="lang-tabs">';
+    ml.languages.forEach(function (lang, i) {
+      html +=
+        '<button class="lang-tab' +
+        (i === 0 ? " active" : "") +
+        '" data-lang="' +
+        esc(lang.key) +
+        '">' +
+        esc(lang.label) +
+        "</button>";
+    });
+    html += '</div><div id="lang-panels">';
+    ml.languages.forEach(function (lang, i) {
+      html +=
+        '<div class="lang-panel' +
+        (i === 0 ? " active" : "") +
+        '" data-lang="' +
+        esc(lang.key) +
+        '">';
+      html += '<h3>' + esc(lang.heading) + "</h3>";
+      html +=
+        '<div class="code-block tree"><pre><code>' +
+        esc(lang.structure) +
+        "</code></pre></div>";
+      html += renderPlainTable(lang.table);
+      html +=
+        '<h4 class="sub-title">' + esc(lang.codeHeading) + "</h4>";
+      html += renderExamples([{ code: lang.code.join("\n"), caption: "" }]);
+      html += "</div>";
+    });
+    html += "</div>";
+
+    html += '<h2 class="section-title">14.5 三语言横向对照表</h2>';
+    html += renderPlainTable(ml.comparisonTable);
+
+    app.innerHTML = html;
+
+    var tabs = app.querySelectorAll(".lang-tab");
+    tabs.forEach(function (t) {
+      t.addEventListener("click", function () {
+        var key = t.getAttribute("data-lang");
+        tabs.forEach(function (x) {
+          x.classList.remove("active");
+        });
+        t.classList.add("active");
+        app.querySelectorAll(".lang-panel").forEach(function (p) {
+          p.classList.toggle("active", p.getAttribute("data-lang") === key);
+        });
+      });
+    });
+    afterRender();
+    closeSidebar();
   }
 
   function renderRefs(refs) {
@@ -375,6 +484,7 @@
 
     html += '<h2 class="section-title">工具与路径</h2><div class="grid grid-3">';
     var tools = [
+      { href: "#/multi-lang", icon: "🌐", title: "多语言分层范例", desc: "Java/Scala/Python 同名原则不同表达" },
       { href: "#/cases", icon: "🧪", title: "对比案例库", desc: "按类别筛选 + 搜索全部 ❌/✅ 对比" },
       { href: "#/cheatsheet", icon: "📄", title: "速查表", desc: "一页纸规范，可打印 / 另存 PDF" },
       { href: "#/toolbox", icon: "🤖", title: "AI 提示词工具箱", desc: "起名 / 规则文件 / 一次 Review，一键复制" },
@@ -723,6 +833,9 @@
       html = renderToolbox();
     } else if (page === "onboarding") {
       html = renderOnboarding();
+    } else if (page === "multi-lang") {
+      renderMultiLang();
+      return;
     } else {
       html = notFound("未找到页面：" + esc(page));
     }
@@ -805,6 +918,7 @@
     var html = "";
     var overview = [
       { href: "#/home", label: "首页" },
+      { href: "#/multi-lang", label: "多语言范例" },
       { href: "#/cheatsheet", label: "速查表" },
       { href: "#/cases", label: "对比案例库" },
       { href: "#/references", label: "参考资料" },

@@ -652,18 +652,23 @@
     });
     html += "</div>";
 
-    html += '<h2 class="section-title">三大分类</h2><div class="grid grid-3">';
-    DATA.categories.forEach(function (cat) {
+    html += '<h2 class="section-title">六大导航组</h2><div class="grid grid-3">';
+    var groups = [
+      { icon: "🚀", title: "快速开始", desc: "新人培训路径 + 一页速查表，1 小时上手。", href: "#/onboarding", chips: ["新人培训", "速查表"] },
+      { icon: "📛", title: "命名规范", desc: "代码 / API / 数据库，共 23 节正反例对比。", href: "#/code", chips: ["代码", "API", "数据库"] },
+      { icon: "🏗️", title: "架构与设计原则", desc: "全链路操作 / 解耦正交 / cats-effect 规范。", href: "#/design/15", chips: ["全链路", "解耦正交", "cats-effect"] },
+      { icon: "🌐", title: "多语言范例", desc: "Java / Scala / Python 同名原则不同表达。", href: "#/multi-lang", chips: ["Java/Scala/Python"] },
+      { icon: "🧰", title: "案例与工具", desc: "聚合案例库 + AI 提示词工具箱。", href: "#/cases", chips: ["案例库", "AI 工具箱"] },
+      { icon: "📚", title: "参考资料", desc: "书籍章节映射 + 业界一手规范外链。", href: "#/references", chips: ["参考链接"] },
+    ];
+    groups.forEach(function (g) {
       html +=
-        '<a class="card cat-card" href="#/' +
-        esc(cat.id) +
-        '"><div class="cat-icon">' +
-        esc(cat.icon) +
-        "</div><h3>" +
-        esc(cat.title) +
-        "</h3><p>" +
-        esc(cat.summary) +
-        "</p></a>";
+        '<a class="card cat-card" href="' + g.href + '"><div class="cat-icon">' + esc(g.icon) +
+        "</div><h3>" + esc(g.title) + "</h3><p>" + esc(g.desc) + '</p><div class="role-links">';
+      g.chips.forEach(function (c) {
+        html += '<span class="chip">' + esc(c) + "</span>";
+      });
+      html += "</div></a>";
     });
     html += "</div>";
     return html;
@@ -1121,40 +1126,24 @@
     nav.innerHTML = html;
   }
 
-  /* ---------------------- 顶部 banner：按使用意图分组的顶层入口 ---------------------- */
+  /* ---------------------- 顶部 banner：仅 6 个导航组（对齐计划第三章 IA 顶层大纲） ---------------------- */
   function buildOutline() {
     var box = document.getElementById("outline-inner");
     if (!box) return;
+    // 只保留顶层 6 组，不再把叶子章节（全链路/解耦/cats-effect 等）重复列在 banner，
+    // 避免与左侧目录树口径冲突；每组链到该组主入口。
     var groups = [
-      { title: "快速开始", links: [
-        { href: "#/home", label: "首页" },
-        { href: "#/onboarding", label: "新人路径" },
-        { href: "#/cheatsheet", label: "速查表" },
-      ]},
-      { title: "命名规范", links: [
-        { href: "#/code", label: "代码" },
-        { href: "#/api", label: "API" },
-        { href: "#/db", label: "数据库" },
-      ]},
-      { title: "架构与设计", links: [
-        { href: "#/design/15", label: "全链路操作" },
-        { href: "#/design/16", label: "解耦正交" },
-        { href: "#/design/17", label: "cats-effect" },
-      ]},
-      { title: "多语言范例", links: [{ href: "#/multi-lang", label: "Java/Scala/Python" }] },
-      { title: "案例与工具", links: [
-        { href: "#/cases", label: "案例库" },
-        { href: "#/toolbox", label: "AI 工具箱" },
-      ]},
-      { title: "参考资料", links: [{ href: "#/references", label: "参考链接" }] },
+      { title: "快速开始", match: "#/home #/onboarding #/cheatsheet", href: "#/onboarding" },
+      { title: "命名规范", match: "#/code #/api #/db", href: "#/code" },
+      { title: "架构与设计原则", match: "#/design", href: "#/design/15" },
+      { title: "多语言范例", match: "#/multi-lang", href: "#/multi-lang" },
+      { title: "案例与工具", match: "#/cases #/toolbox", href: "#/cases" },
+      { title: "参考资料", match: "#/references", href: "#/references" },
     ];
     var html = "";
     groups.forEach(function (g) {
-      html += '<div class="outline-group"><span class="outline-cat">' + esc(g.title) + "</span>";
-      g.links.forEach(function (l) {
-        html += '<a class="outline-link" href="' + l.href + '">' + esc(l.label) + "</a>";
-      });
-      html += "</div>";
+      html += '<a class="outline-link" href="' + g.href + '" data-match="' +
+        escAttr(g.match) + '">' + esc(g.title) + "</a>";
     });
     box.innerHTML = html;
   }
@@ -1163,8 +1152,10 @@
     if (current === "") current = "#/home";
     var links = document.querySelectorAll(".outline-link");
     links.forEach(function (a) {
-      var href = a.getAttribute("href");
-      var active = href === current || current.indexOf(href + "/") === 0;
+      var match = (a.getAttribute("data-match") || "").split(" ");
+      var active = match.some(function (p) {
+        return current === p || current.indexOf(p + "/") === 0;
+      });
       a.classList.toggle("active", active);
     });
   }
